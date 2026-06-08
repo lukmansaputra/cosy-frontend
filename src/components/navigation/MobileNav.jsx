@@ -1,5 +1,11 @@
 import { NavLink } from "react-router-dom";
-import { LayoutDashboard, FolderKanban, Wallet, Users } from "lucide-react";
+import {
+  ClipboardList,
+  FolderKanban,
+  LayoutDashboard,
+  Users,
+  Wallet,
+} from "lucide-react";
 
 const MOBILE_NAV = [
   {
@@ -11,6 +17,11 @@ const MOBILE_NAV = [
     label: "Projects",
     path: "/projects",
     icon: FolderKanban,
+  },
+  {
+    label: "Survey",
+    path: "/surveys",
+    icon: ClipboardList,
   },
   {
     label: "Finance",
@@ -27,7 +38,7 @@ const MOBILE_NAV = [
 export default function MobileNav() {
   return (
     <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-[#252A27] bg-[#161917] md:hidden">
-      <div className="grid grid-cols-4">
+      <div className="grid grid-cols-5">
         {MOBILE_NAV.map((item) => {
           const Icon = item.icon;
 
