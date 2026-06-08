@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Search, ChevronRight, Briefcase, Plus } from "lucide-react";
 import { Link } from "react-router-dom";
 
@@ -43,70 +44,40 @@ const STATUS_LABEL = {
   cancelled: "Batal",
   batal: "Batal",
 };
+const EMPTY_ARRAY = [];
 
 export default function ProjectsPage() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("Semua");
-  const [projects, setProjects] = useState([]);
-  const [customers, setCustomers] = useState([]);
   const [projectSheetOpen, setProjectSheetOpen] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-
-  async function loadProjects() {
-    try {
-      setLoading(true);
-      setError("");
-
-      const data = await getProjects();
-
-      setProjects(data || []);
-    } catch (loadError) {
-      setError(loadError.message);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    let active = true;
-
-    async function loadData() {
-      try {
-        setLoading(true);
-        setError("");
-
-        const [projectData, customerData] = await Promise.all([
-          getProjects(),
-          getCustomers(),
-        ]);
-
-        if (active) {
-          setProjects(projectData || []);
-          setCustomers(customerData || []);
-        }
-      } catch (loadError) {
-        if (active) setError(loadError.message);
-      } finally {
-        if (active) setLoading(false);
-      }
-    }
-
-    loadData();
-
-    return () => {
-      active = false;
-    };
-  }, []);
+  const [actionError, setActionError] = useState("");
+  const queryClient = useQueryClient();
+  const projectsQuery = useQuery({
+    queryKey: ["projects"],
+    queryFn: getProjects,
+  });
+  const customersQuery = useQuery({
+    queryKey: ["customers"],
+    queryFn: getCustomers,
+  });
+  const projects = projectsQuery.data || EMPTY_ARRAY;
+  const customers = customersQuery.data || EMPTY_ARRAY;
+  const loading = projectsQuery.isPending || customersQuery.isPending;
+  const error =
+    actionError ||
+    projectsQuery.error?.message ||
+    customersQuery.error?.message ||
+    "";
 
   async function handleCreateProject(payload) {
     try {
-      setError("");
+      setActionError("");
 
       await createProject(payload);
-      await loadProjects();
+      await projectsQuery.refetch();
+      queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
     } catch (createError) {
-      setError(createError.message);
+      setActionError(createError.message);
     }
   }
 

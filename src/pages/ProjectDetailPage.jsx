@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
   User,
@@ -75,27 +76,29 @@ const PROGRESS_MAP = {
   completed: 100,
   cancelled: 0,
 };
+const EMPTY_ARRAY = [];
 
 export default function ProjectDetailPage() {
   const { id: projectId } = useParams();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { showToast } = useToast();
-  const { loading, project, payments, expenses, documents, refresh } =
+  const { loading, project, payments, expenses, documents, error, refresh } =
     useProjectDetail(projectId);
-  const [status, setStatus] = useState("survey");
+  const [statusDraft, setStatusDraft] = useState({ projectId: null, status: "" });
   const [tab, setTab] = useState("overview");
 
+  const status =
+    statusDraft.projectId === projectId && statusDraft.status
+      ? statusDraft.status
+      : project?.status || "survey";
   const progress = PROGRESS_MAP[status] || 0;
   const [paymentSheetOpen, setPaymentSheetOpen] = useState(false);
   const [expenseSheetOpen, setExpenseSheetOpen] = useState(false);
   const [rabItemSheetOpen, setRabItemSheetOpen] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState(null);
   const [actionError, setActionError] = useState("");
-  const [rabItems, setRabItems] = useState([]);
   const [selectedRabItem, setSelectedRabItem] = useState(null);
-  const [rabSettings, setRabSettings] = useState(() =>
-    normalizeRabSettings(),
-  );
 
   const [paymentActionOpen, setPaymentActionOpen] = useState(false);
   const [selectedExpense, setSelectedExpense] = useState(null);
@@ -110,22 +113,27 @@ export default function ProjectDetailPage() {
   const [invoiceSheetOpen, setInvoiceSheetOpen] = useState(false);
   const [projectEditOpen, setProjectEditOpen] = useState(false);
   const [documentFilter, setDocumentFilter] = useState("Semua");
-  const [invoices, setInvoices] = useState([]);
   const [actionLoading, setActionLoading] = useState("");
 
   const [selectedReceipt, setSelectedReceipt] = useState(null);
-
-  useEffect(() => {
-    if (project?.status) setStatus(project.status);
-  }, [project?.status]);
-
-  useEffect(() => {
-    if (!projectId) return;
-
-    loadRabSettingsFromApi();
-    loadRabItems();
-    loadInvoices();
-  }, [projectId]);
+  const rabItemsQuery = useQuery({
+    queryKey: ["project-rab-items", projectId],
+    queryFn: () => getProjectItems(projectId),
+    enabled: Boolean(projectId),
+  });
+  const rabSettingsQuery = useQuery({
+    queryKey: ["project-rab-settings", projectId],
+    queryFn: () => getRabSettings(projectId),
+    enabled: Boolean(projectId),
+  });
+  const invoicesQuery = useQuery({
+    queryKey: ["project-invoices", projectId],
+    queryFn: () => getProjectInvoices(projectId),
+    enabled: Boolean(projectId),
+  });
+  const rabItems = rabItemsQuery.data || EMPTY_ARRAY;
+  const rabSettings = rabSettingsQuery.data || normalizeRabSettings();
+  const invoices = invoicesQuery.data || EMPTY_ARRAY;
 
   const totalIncome = useMemo(
     () => payments.reduce((sum, item) => sum + Number(item.amount || 0), 0),
@@ -136,10 +144,6 @@ export default function ProjectDetailPage() {
     () => expenses.reduce((sum, item) => sum + Number(item.amount || 0), 0),
     [expenses],
   );
-
-  const profit = totalIncome - totalExpense;
-
-  const outstanding = projectValue - totalIncome;
 
   const rabGrandTotal = useMemo(
     () => rabItems.reduce((sum, item) => sum + Number(item.subtotal || 0), 0),
@@ -155,51 +159,45 @@ export default function ProjectDetailPage() {
       : Number(project.original_contract_value || 0);
   const projectValue =
     savedContractValue > 0 ? savedContractValue : Number(rabTotals.finalTotal || 0);
+  const profit = totalIncome - totalExpense;
+  const outstanding = projectValue - totalIncome;
 
-  async function loadRabSettingsFromApi() {
-    try {
-      const data = await getRabSettings(projectId);
-      setRabSettings(data);
-    } catch (error) {
-      setActionError(error.message);
-    }
+  async function refreshProjectData() {
+    await refresh();
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["projects"] }),
+      queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] }),
+      queryClient.invalidateQueries({ queryKey: ["payments"] }),
+      queryClient.invalidateQueries({ queryKey: ["expenses"] }),
+    ]);
   }
 
   async function handleRabSettingsChange(nextSettings) {
-    setRabSettings(nextSettings);
+    queryClient.setQueryData(["project-rab-settings", projectId], nextSettings);
 
     try {
       await updateRabSettings(projectId, nextSettings);
     } catch (error) {
       setActionError(error.message);
+      rabSettingsQuery.refetch();
     }
   }
 
   async function loadRabItems() {
-    try {
-      const data = await getProjectItems(projectId);
-      setRabItems(data || []);
-    } catch (error) {
-      setActionError(error.message);
-    }
+    await rabItemsQuery.refetch();
   }
 
   async function loadInvoices() {
-    try {
-      const data = await getProjectInvoices(projectId);
-      setInvoices(data || []);
-    } catch (error) {
-      setActionError(error.message);
-    }
+    await invoicesQuery.refetch();
   }
 
   async function handleStatusChange(nextStatus) {
     try {
-      setStatus(nextStatus);
+      setStatusDraft({ projectId, status: nextStatus });
       setActionError("");
       setActionLoading("status");
       await updateProjectStatus(projectId, nextStatus);
-      refresh();
+      await refreshProjectData();
       showToast({
         title: "Status proyek diperbarui",
         message: `Status sekarang ${getStatusLabel(nextStatus)}.`,
@@ -211,7 +209,7 @@ export default function ProjectDetailPage() {
         title: "Status gagal diperbarui",
         message: error.message,
       });
-      if (project?.status) setStatus(project.status);
+      setStatusDraft({ projectId, status: "" });
     } finally {
       setActionLoading("");
     }
@@ -227,7 +225,7 @@ export default function ProjectDetailPage() {
         payment_method: payment.method || null,
         notes: payment.note,
       });
-      refresh();
+      await refreshProjectData();
       showToast({ title: "Pembayaran tersimpan" });
     } catch (error) {
       setActionError(error.message);
@@ -248,7 +246,7 @@ export default function ProjectDetailPage() {
         amount: expense.amount,
         description: expense.name,
       });
-      refresh();
+      await refreshProjectData();
       showToast({ title: "Pengeluaran tersimpan" });
     } catch (error) {
       setActionError(error.message);
@@ -265,7 +263,7 @@ export default function ProjectDetailPage() {
       setActionError("");
       setActionLoading(`payment-${id}`);
       await deletePayment(id);
-      refresh();
+      await refreshProjectData();
       showToast({ title: "Pembayaran dihapus" });
     } catch (error) {
       setActionError(error.message);
@@ -284,7 +282,7 @@ export default function ProjectDetailPage() {
       setActionError("");
       setActionLoading(`expense-${id}`);
       await deleteExpense(id);
-      refresh();
+      await refreshProjectData();
       showToast({ title: "Pengeluaran dihapus" });
     } catch (error) {
       setActionError(error.message);
@@ -303,6 +301,10 @@ export default function ProjectDetailPage() {
       setActionError("");
       setActionLoading("delete-project");
       await deleteProject(projectId);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["projects"] }),
+        queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] }),
+      ]);
       showToast({ title: "Proyek dihapus" });
       navigate("/projects");
     } catch (error) {
@@ -376,8 +378,10 @@ export default function ProjectDetailPage() {
         contract_value: rabTotals.finalTotal,
         ...(shouldMoveToWaitingDp ? { status: "waiting_dp" } : {}),
       });
-      if (shouldMoveToWaitingDp) setStatus("waiting_dp");
-      refresh();
+      if (shouldMoveToWaitingDp) {
+        setStatusDraft({ projectId, status: "waiting_dp" });
+      }
+      await refreshProjectData();
       showToast({
         title: "RAB disetujui",
         message: "Nilai kontrak sudah mengikuti total akhir RAB.",
@@ -403,7 +407,7 @@ export default function ProjectDetailPage() {
         documentType: payload.documentType,
         notes: payload.notes,
       });
-      refresh();
+      await refreshProjectData();
       setDocumentSheetOpen(false);
       showToast({ title: "Dokumen berhasil diupload" });
     } catch (error) {
@@ -427,8 +431,8 @@ export default function ProjectDetailPage() {
         start_date: payload.start_date || null,
         target_finish_date: payload.target_finish_date || null,
       });
-      setStatus(payload.status);
-      await refresh();
+      setStatusDraft({ projectId, status: payload.status });
+      await refreshProjectData();
       setProjectEditOpen(false);
       showToast({ title: "Data proyek diperbarui" });
     } catch (error) {
@@ -450,7 +454,7 @@ export default function ProjectDetailPage() {
       setActionError("");
       setActionLoading("delete-document");
       await deleteProjectDocument(selectedDocument.id);
-      await refresh();
+      await refreshProjectData();
       setSelectedDocument(null);
       setDeleteDocumentDialogOpen(false);
       showToast({ title: "Dokumen dihapus" });
@@ -663,9 +667,9 @@ export default function ProjectDetailPage() {
         </div>
       </div>
 
-      {actionError && (
+      {(actionError || error) && (
         <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-sm text-red-300">
-          {actionError}
+          {actionError || error}
         </div>
       )}
 

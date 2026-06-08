@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   ArrowUpRight,
   Briefcase,
@@ -21,43 +22,21 @@ const PROGRESS_MAP = {
 };
 
 const ACTIVE_STATUSES = ["survey", "quotation", "waiting_dp", "production", "installation"];
+const EMPTY_ARRAY = [];
 
 export default function DashboardPage() {
-  const [summary, setSummary] = useState(null);
-  const [projects, setProjects] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    let active = true;
-
-    async function loadDashboard() {
-      try {
-        setLoading(true);
-        setError("");
-
-        const [summaryData, projectData] = await Promise.all([
-          getDashboardSummary(),
-          getProjects(),
-        ]);
-
-        if (active) {
-          setSummary(summaryData);
-          setProjects(projectData || []);
-        }
-      } catch (loadError) {
-        if (active) setError(loadError.message);
-      } finally {
-        if (active) setLoading(false);
-      }
-    }
-
-    loadDashboard();
-
-    return () => {
-      active = false;
-    };
-  }, []);
+  const summaryQuery = useQuery({
+    queryKey: ["dashboard-summary"],
+    queryFn: getDashboardSummary,
+  });
+  const projectsQuery = useQuery({
+    queryKey: ["projects"],
+    queryFn: getProjects,
+  });
+  const summary = summaryQuery.data;
+  const projects = projectsQuery.data || EMPTY_ARRAY;
+  const loading = summaryQuery.isPending || projectsQuery.isPending;
+  const error = summaryQuery.error?.message || projectsQuery.error?.message || "";
 
   const activeProjects = useMemo(() => {
     return projects

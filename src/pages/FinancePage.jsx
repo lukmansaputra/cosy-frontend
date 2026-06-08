@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   ArrowDownRight,
   ArrowUpRight,
@@ -13,50 +14,40 @@ import { getExpenses } from "@/services/expenses.service";
 import { getPayments } from "@/services/payment.service";
 import { getProjects } from "@/services/project.service";
 
+const EMPTY_ARRAY = [];
+
 export default function FinancePage() {
-  const [summary, setSummary] = useState(null);
-  const [projects, setProjects] = useState([]);
-  const [payments, setPayments] = useState([]);
-  const [expenses, setExpenses] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    let active = true;
-
-    async function loadFinance() {
-      try {
-        setLoading(true);
-        setError("");
-
-        const [summaryData, projectData, paymentData, expenseData] = await Promise.all([
-          getDashboardSummary(),
-          getProjects(),
-          getPayments(),
-          getExpenses(),
-        ]);
-
-        const projectList = projectData || [];
-
-        if (active) {
-          setSummary(summaryData);
-          setProjects(projectList);
-          setPayments(paymentData || []);
-          setExpenses(expenseData || []);
-        }
-      } catch (loadError) {
-        if (active) setError(loadError.message);
-      } finally {
-        if (active) setLoading(false);
-      }
-    }
-
-    loadFinance();
-
-    return () => {
-      active = false;
-    };
-  }, []);
+  const summaryQuery = useQuery({
+    queryKey: ["dashboard-summary"],
+    queryFn: getDashboardSummary,
+  });
+  const projectsQuery = useQuery({
+    queryKey: ["projects"],
+    queryFn: getProjects,
+  });
+  const paymentsQuery = useQuery({
+    queryKey: ["payments"],
+    queryFn: getPayments,
+  });
+  const expensesQuery = useQuery({
+    queryKey: ["expenses"],
+    queryFn: getExpenses,
+  });
+  const summary = summaryQuery.data;
+  const projects = projectsQuery.data || EMPTY_ARRAY;
+  const payments = paymentsQuery.data || EMPTY_ARRAY;
+  const expenses = expensesQuery.data || EMPTY_ARRAY;
+  const loading =
+    summaryQuery.isPending ||
+    projectsQuery.isPending ||
+    paymentsQuery.isPending ||
+    expensesQuery.isPending;
+  const error =
+    summaryQuery.error?.message ||
+    projectsQuery.error?.message ||
+    paymentsQuery.error?.message ||
+    expensesQuery.error?.message ||
+    "";
 
   const recentPayments = useMemo(() => {
     return [...payments]

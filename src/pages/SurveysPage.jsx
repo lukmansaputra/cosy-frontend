@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Calendar, ClipboardList, MapPin, Search, User } from "lucide-react";
 
 import { getSurveys } from "@/services/survey.service";
@@ -9,37 +10,17 @@ const STATUS_LABEL = {
   completed: "Selesai",
   cancelled: "Batal",
 };
+const EMPTY_ARRAY = [];
 
 export default function SurveysPage() {
-  const [surveys, setSurveys] = useState([]);
   const [search, setSearch] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    let active = true;
-
-    async function loadSurveys() {
-      try {
-        setLoading(true);
-        setError("");
-
-        const data = await getSurveys();
-
-        if (active) setSurveys(data || []);
-      } catch (loadError) {
-        if (active) setError(loadError.message);
-      } finally {
-        if (active) setLoading(false);
-      }
-    }
-
-    loadSurveys();
-
-    return () => {
-      active = false;
-    };
-  }, []);
+  const surveysQuery = useQuery({
+    queryKey: ["surveys"],
+    queryFn: getSurveys,
+  });
+  const surveys = surveysQuery.data || EMPTY_ARRAY;
+  const loading = surveysQuery.isPending;
+  const error = surveysQuery.error?.message || "";
 
   const filteredSurveys = useMemo(() => {
     return surveys.filter((survey) => {

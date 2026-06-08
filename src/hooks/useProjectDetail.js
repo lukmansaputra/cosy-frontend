@@ -1,24 +1,18 @@
 // src/hooks/useProjectDetail.js
 
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 
 import { getProject } from "@/services/project.service";
 import { getProjectPayments } from "@/services/payment.service";
 import { getProjectExpenses } from "@/services/expenses.service";
 import { getProjectDocuments } from "@/services/documents.service";
 
+const EMPTY_ARRAY = [];
+
 export function useProjectDetail(projectId) {
-  const [loading, setLoading] = useState(true);
-
-  const [project, setProject] = useState(null);
-  const [payments, setPayments] = useState([]);
-  const [expenses, setExpenses] = useState([]);
-  const [documents, setDocuments] = useState([]);
-
-  async function loadData() {
-    try {
-      setLoading(true);
-
+  const detailQuery = useQuery({
+    queryKey: ["project-detail", projectId],
+    queryFn: async () => {
       const [projectData, paymentData, expenseData, documentData] =
         await Promise.all([
           getProject(projectId),
@@ -27,29 +21,24 @@ export function useProjectDetail(projectId) {
           getProjectDocuments(projectId),
         ]);
 
-      setProject(projectData);
-      setPayments(paymentData);
-      setExpenses(expenseData);
-      setDocuments(documentData);
-    } catch (error) {
-      console.error(error);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    if (!projectId) return;
-
-    loadData();
-  }, [projectId]);
+      return {
+        project: projectData,
+        payments: paymentData || EMPTY_ARRAY,
+        expenses: expenseData || EMPTY_ARRAY,
+        documents: documentData || EMPTY_ARRAY,
+      };
+    },
+    enabled: Boolean(projectId),
+  });
+  const data = detailQuery.data || {};
 
   return {
-    loading,
-    project,
-    payments,
-    expenses,
-    documents,
-    refresh: loadData,
+    loading: detailQuery.isPending,
+    project: data.project || null,
+    payments: data.payments || EMPTY_ARRAY,
+    expenses: data.expenses || EMPTY_ARRAY,
+    documents: data.documents || EMPTY_ARRAY,
+    error: detailQuery.error?.message || "",
+    refresh: detailQuery.refetch,
   };
 }

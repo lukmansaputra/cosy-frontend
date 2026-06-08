@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { MapPin, MoreVertical, Pencil, Phone, Plus, Search, Trash2, User } from "lucide-react";
 
 import CustomerSheet from "@/components/customers/CustomerSheet";
@@ -10,59 +11,32 @@ import {
   updateCustomer,
 } from "@/services/customer.service";
 
+const EMPTY_ARRAY = [];
+
 export default function CustomersPage() {
-  const [customers, setCustomers] = useState([]);
   const [search, setSearch] = useState("");
   const [sheetOpen, setSheetOpen] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [actionCustomer, setActionCustomer] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [actionError, setActionError] = useState("");
+  const queryClient = useQueryClient();
+  const customersQuery = useQuery({
+    queryKey: ["customers"],
+    queryFn: getCustomers,
+  });
+  const customers = customersQuery.data || EMPTY_ARRAY;
+  const loading = customersQuery.isPending;
+  const error = actionError || customersQuery.error?.message || "";
 
-  async function loadCustomers() {
-    try {
-      setLoading(true);
-      setError("");
-
-      const data = await getCustomers();
-
-      setCustomers(data || []);
-    } catch (loadError) {
-      setError(loadError.message);
-    } finally {
-      setLoading(false);
-    }
+  async function refreshCustomers() {
+    await customersQuery.refetch();
+    queryClient.invalidateQueries({ queryKey: ["projects"] });
   }
-
-  useEffect(() => {
-    let active = true;
-
-    async function loadData() {
-      try {
-        setLoading(true);
-        setError("");
-
-        const data = await getCustomers();
-
-        if (active) setCustomers(data || []);
-      } catch (loadError) {
-        if (active) setError(loadError.message);
-      } finally {
-        if (active) setLoading(false);
-      }
-    }
-
-    loadData();
-
-    return () => {
-      active = false;
-    };
-  }, []);
 
   async function handleSubmitCustomer(payload) {
     try {
-      setError("");
+      setActionError("");
 
       if (selectedCustomer) {
         await updateCustomer(selectedCustomer.id, payload);
@@ -72,9 +46,9 @@ export default function CustomersPage() {
 
       setSheetOpen(false);
       setSelectedCustomer(null);
-      await loadCustomers();
+      await refreshCustomers();
     } catch (submitError) {
-      setError(submitError.message);
+      setActionError(submitError.message);
     }
   }
 
@@ -82,13 +56,13 @@ export default function CustomersPage() {
     if (!actionCustomer) return;
 
     try {
-      setError("");
+      setActionError("");
       await deleteCustomer(actionCustomer.id);
       setDeleteDialogOpen(false);
       setActionCustomer(null);
-      await loadCustomers();
+      await refreshCustomers();
     } catch (deleteError) {
-      setError(deleteError.message);
+      setActionError(deleteError.message);
     }
   }
 
