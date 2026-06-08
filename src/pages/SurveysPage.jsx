@@ -1,8 +1,26 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Calendar, ClipboardList, MapPin, Search, User } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  Calendar,
+  ClipboardList,
+  MapPin,
+  Pencil,
+  Plus,
+  Search,
+  Trash2,
+  User,
+} from "lucide-react";
 
-import { getSurveys } from "@/services/survey.service";
+import SurveySheet from "@/components/surveys/SurveySheet";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import { getInitialSurveyForm } from "@/lib/surveyForm";
+import { getCustomers } from "@/services/customer.service";
+import {
+  createSurvey,
+  deleteSurvey,
+  getSurveys,
+  updateSurvey,
+} from "@/services/survey.service";
 
 const STATUS_LABEL = {
   pending: "Pending",
@@ -14,13 +32,109 @@ const EMPTY_ARRAY = [];
 
 export default function SurveysPage() {
   const [search, setSearch] = useState("");
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [selectedSurvey, setSelectedSurvey] = useState(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [actionSurvey, setActionSurvey] = useState(null);
+  const [form, setForm] = useState(() => getInitialSurveyForm(null));
+  const [actionError, setActionError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const queryClient = useQueryClient();
   const surveysQuery = useQuery({
     queryKey: ["surveys"],
     queryFn: getSurveys,
   });
+  const customersQuery = useQuery({
+    queryKey: ["customers"],
+    queryFn: getCustomers,
+  });
   const surveys = surveysQuery.data || EMPTY_ARRAY;
-  const loading = surveysQuery.isPending;
-  const error = surveysQuery.error?.message || "";
+  const customers = customersQuery.data || EMPTY_ARRAY;
+  const loading = surveysQuery.isPending || customersQuery.isPending;
+  const error =
+    actionError ||
+    surveysQuery.error?.message ||
+    customersQuery.error?.message ||
+    "";
+
+  function openCreateSheet() {
+    setActionError("");
+    setSelectedSurvey(null);
+    setForm(getInitialSurveyForm(null, customers));
+    setSheetOpen(true);
+  }
+
+  function openEditSheet(survey) {
+    setActionError("");
+    setSelectedSurvey(survey);
+    setForm(getInitialSurveyForm(survey, customers));
+    setSheetOpen(true);
+  }
+
+  function updateForm(field, value) {
+    setForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  function buildPayload() {
+    return {
+      customer_id: form.customer_id,
+      survey_date: form.survey_date || null,
+      surveyor_name: form.surveyor_name || null,
+      project_type: form.project_type,
+      project_location: form.project_location,
+      estimated_budget:
+        form.estimated_budget === "" ? null : Number(form.estimated_budget),
+      status: form.status,
+      notes: form.notes || null,
+    };
+  }
+
+  async function refreshSurveys() {
+    await surveysQuery.refetch();
+    queryClient.invalidateQueries({ queryKey: ["projects"] });
+  }
+
+  async function handleSubmitSurvey() {
+    try {
+      setSaving(true);
+      setActionError("");
+
+      if (selectedSurvey) {
+        await updateSurvey(selectedSurvey.id, buildPayload());
+      } else {
+        await createSurvey(buildPayload());
+      }
+
+      await refreshSurveys();
+      setSheetOpen(false);
+      setSelectedSurvey(null);
+      setForm(getInitialSurveyForm(null, customers));
+    } catch (submitError) {
+      setActionError(submitError.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDeleteSurvey() {
+    if (!actionSurvey) return;
+
+    try {
+      setSaving(true);
+      setActionError("");
+      await deleteSurvey(actionSurvey.id);
+      await refreshSurveys();
+      setDeleteDialogOpen(false);
+      setActionSurvey(null);
+    } catch (deleteError) {
+      setActionError(deleteError.message);
+    } finally {
+      setSaving(false);
+    }
+  }
 
   const filteredSurveys = useMemo(() => {
     return surveys.filter((survey) => {
@@ -37,9 +151,45 @@ export default function SurveysPage() {
 
   return (
     <div className="space-y-5">
-      <div>
-        <p className="text-sm text-[#8B9388]">Jadwal Survey</p>
-        <h1 className="mt-1 text-2xl font-semibold text-white">Surveys</h1>
+      <SurveySheet
+        open={sheetOpen}
+        form={form}
+        editing={Boolean(selectedSurvey)}
+        customers={customers}
+        saving={saving}
+        onChange={updateForm}
+        onClose={() => {
+          setSheetOpen(false);
+          setSelectedSurvey(null);
+        }}
+        onSubmit={handleSubmitSurvey}
+      />
+
+      <ConfirmDialog
+        open={deleteDialogOpen}
+        title="Hapus survey?"
+        description="Data survey akan dihapus dari daftar. Pastikan data ini tidak lagi diperlukan."
+        confirmText={saving ? "Menghapus..." : "Hapus Survey"}
+        onCancel={() => {
+          setDeleteDialogOpen(false);
+          setActionSurvey(null);
+        }}
+        onConfirm={handleDeleteSurvey}
+      />
+
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm text-[#8B9388]">Jadwal Survey</p>
+          <h1 className="mt-1 text-2xl font-semibold text-white">Surveys</h1>
+        </div>
+
+        <button
+          onClick={openCreateSheet}
+          className="flex shrink-0 items-center gap-2 rounded-xl bg-[#4A5B45] px-3 py-2 text-sm font-medium text-white"
+        >
+          <Plus size={16} />
+          Survey
+        </button>
       </div>
 
       <div className="relative">
@@ -89,6 +239,27 @@ export default function SurveysPage() {
               <span className="shrink-0 rounded-full bg-[#4A5B45]/20 px-3 py-1 text-xs text-[#7C9A72]">
                 {STATUS_LABEL[survey.status] || survey.status || "Survey"}
               </span>
+            </div>
+
+            <div className="mt-4 grid grid-cols-2 gap-2 border-t border-[#252A27] pt-3">
+              <button
+                onClick={() => openEditSheet(survey)}
+                className="flex items-center justify-center gap-2 rounded-xl bg-[#101311] px-3 py-2 text-sm text-[#F5F5F2]"
+              >
+                <Pencil size={15} />
+                Edit
+              </button>
+
+              <button
+                onClick={() => {
+                  setActionSurvey(survey);
+                  setDeleteDialogOpen(true);
+                }}
+                className="flex items-center justify-center gap-2 rounded-xl bg-red-500/10 px-3 py-2 text-sm text-red-400"
+              >
+                <Trash2 size={15} />
+                Hapus
+              </button>
             </div>
           </div>
         ))}
