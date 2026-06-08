@@ -86,7 +86,6 @@ export default function ProjectDetailPage() {
   const [tab, setTab] = useState("overview");
 
   const progress = PROGRESS_MAP[status] || 0;
-  const projectValue = Number(project?.contract_value || 0);
   const [paymentSheetOpen, setPaymentSheetOpen] = useState(false);
   const [expenseSheetOpen, setExpenseSheetOpen] = useState(false);
   const [rabItemSheetOpen, setRabItemSheetOpen] = useState(false);
@@ -150,6 +149,12 @@ export default function ProjectDetailPage() {
     () => calculateRabTotals(rabGrandTotal, rabSettings),
     [rabGrandTotal, rabSettings],
   );
+  const savedContractValue =
+    project?.original_contract_value == null
+      ? Number(project?.contract_value || 0)
+      : Number(project.original_contract_value || 0);
+  const projectValue =
+    savedContractValue > 0 ? savedContractValue : Number(rabTotals.finalTotal || 0);
 
   async function loadRabSettingsFromApi() {
     try {

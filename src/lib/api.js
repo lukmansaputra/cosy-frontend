@@ -1,7 +1,9 @@
 import axios from "axios";
 
+const rawApiUrl = import.meta.env.VITE_API_URL || "/api";
+
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "/api",
+  baseURL: normalizeApiUrl(rawApiUrl),
   withCredentials: true,
 });
 
@@ -29,4 +31,16 @@ export function handleApiError(error) {
     error.response?.data?.message || error.message || "Terjadi kesalahan";
 
   throw new Error(message);
+}
+
+function normalizeApiUrl(url) {
+  const cleanUrl = String(url).trim().replace(/\/+$/, "");
+
+  if (!cleanUrl || cleanUrl === "/api") return "/api";
+  if (cleanUrl.endsWith("/api")) return cleanUrl;
+  if (cleanUrl.startsWith("http://") || cleanUrl.startsWith("https://")) {
+    return `${cleanUrl}/api`;
+  }
+
+  return cleanUrl;
 }
