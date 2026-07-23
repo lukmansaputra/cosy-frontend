@@ -1,5 +1,5 @@
-import { Bell } from "lucide-react";
-import { Link, useLocation } from "react-router-dom";
+import { Bell, ChevronRight, ClipboardList } from "lucide-react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -36,6 +36,7 @@ const PAGE_META = {
 export default function AppHeader() {
   const location = useLocation();
   const { user } = useAuth();
+  const navigate = useNavigate();
   const meta = getPageMeta(location.pathname);
   const [notificationOpen, setNotificationOpen] = useState(false);
   const queryClient = useQueryClient();
@@ -53,6 +54,9 @@ export default function AppHeader() {
       queryClient.invalidateQueries({ queryKey: ["notifications"] });
     }
     setNotificationOpen(false);
+    if (notification.entity_type === "survey" && notification.entity_id) {
+      navigate(`/surveys?focus=${notification.entity_id}`);
+    }
   }
 
   return (
@@ -79,10 +83,10 @@ export default function AppHeader() {
         </button>
         {notificationOpen && (
           <div className="absolute right-0 top-12 z-50 w-80 overflow-hidden rounded-2xl border border-[#303632] bg-[#161917] shadow-2xl shadow-black/30">
-            <div className="border-b border-[#252A27] px-4 py-3"><p className="font-semibold text-white">Notifikasi</p></div>
+            <div className="flex items-center justify-between border-b border-[#252A27] px-4 py-3"><div><p className="font-semibold text-white">Notifikasi</p><p className="text-xs text-[#8B9388]">{unreadCount ? `${unreadCount} belum dibaca` : "Semua sudah dibaca"}</p></div><ClipboardList className="size-4 text-[#7C9A72]" /></div>
             <div className="max-h-96 overflow-y-auto">
               {notifications.length === 0 && <p className="p-4 text-sm text-[#8B9388]">Belum ada notifikasi.</p>}
-              {notifications.map((notification) => <button className={`w-full border-b border-[#252A27] px-4 py-3 text-left text-sm transition hover:bg-[#202522] ${notification.is_read ? "text-[#8B9388]" : "bg-[#4A5B45]/15 text-white"}`} key={notification.id} onClick={() => openNotification(notification)} type="button"><p className="font-medium">{notification.title}</p><p className="mt-1 text-xs leading-5 text-[#8B9388]">{notification.message}</p></button>)}
+              {notifications.map((notification) => <button className={`group flex w-full gap-3 border-b border-[#252A27] px-4 py-3 text-left transition hover:bg-[#202522] ${notification.is_read ? "text-[#8B9388]" : "bg-[#4A5B45]/15 text-white"}`} key={notification.id} onClick={() => openNotification(notification)} type="button"><span className={`mt-1.5 size-2 shrink-0 rounded-full ${notification.is_read ? "bg-[#4A5B45]" : "bg-[#9FBD91]"}`} /><span className="min-w-0 flex-1"><span className="flex items-start justify-between gap-2"><span className="font-medium">{notification.title}</span><span className="shrink-0 text-[10px] text-[#8B9388]">{relativeTime(notification.created_at)}</span></span><span className="mt-1 block text-xs leading-5 text-[#8B9388]">{notification.message}</span><span className="mt-2 flex items-center gap-1 text-xs font-medium text-[#9FBD91]">Lihat survey <ChevronRight className="size-3 transition group-hover:translate-x-0.5" /></span></span></button>)}
             </div>
           </div>
         )}
@@ -98,6 +102,14 @@ export default function AppHeader() {
       </div>
     </header>
   );
+}
+
+function relativeTime(value) {
+  const seconds = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 1000));
+  if (seconds < 60) return "Baru saja";
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}j`;
+  return `${Math.floor(seconds / 86400)}h`;
 }
 
 function getPageMeta(pathname) {
