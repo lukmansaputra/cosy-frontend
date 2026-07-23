@@ -1,6 +1,6 @@
 import { Bell, ChevronRight, ClipboardList } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useAuth } from "@/hooks/useAuth";
@@ -39,6 +39,7 @@ export default function AppHeader() {
   const navigate = useNavigate();
   const meta = getPageMeta(location.pathname);
   const [notificationOpen, setNotificationOpen] = useState(false);
+  const notificationRef = useRef(null);
   const queryClient = useQueryClient();
   const notificationsQuery = useQuery({
     queryKey: ["notifications"],
@@ -47,6 +48,26 @@ export default function AppHeader() {
   });
   const notifications = notificationsQuery.data || [];
   const unreadCount = notifications.filter((notification) => !notification.is_read).length;
+
+  useEffect(() => {
+    function closeOnOutsideClick(event) {
+      if (notificationRef.current && !notificationRef.current.contains(event.target)) {
+        setNotificationOpen(false);
+      }
+    }
+
+    function closeOnEscape(event) {
+      if (event.key === "Escape") setNotificationOpen(false);
+    }
+
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    document.addEventListener("keydown", closeOnEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutsideClick);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, []);
 
   async function openNotification(notification) {
     if (!notification.is_read) {
@@ -72,7 +93,7 @@ export default function AppHeader() {
       </div>
 
       <div className="flex shrink-0 items-center gap-2">
-        <div className="relative">
+        <div className="relative" ref={notificationRef}>
         <button
           aria-label="Notifikasi"
           className="relative flex h-10 w-10 items-center justify-center rounded-xl border border-[#252A27] bg-[#161917]"
