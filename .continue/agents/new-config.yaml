@@ -1,0 +1,9 @@
+name: My Config
+version: 1.0.0
+schema: v1
+
+models:
+  - name: Naraya
+    provider: mistral
+    model: mistral-medium-3-5
+    apiKey: sk-nry-pWzQa0FDuwdtDn5bx6HZeAZjJpTBQC7WIYMgWnW2spo
